@@ -1,0 +1,216 @@
+---
+title: "Financial Analysis-PCA"
+author: ""
+date: "11/25/2018"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+## Introduction
+In This part of the project, a Principal component analysis is to be conducted on the dataset which consists of the following:
+Three sectors and five representative firm of each sector, selected macroeconomic indicators and Fama-French factors.
+
+```{r getdata, include=FALSE}
+options(warn=-1)
+
+## install packages are hidden, just delete ## to install the packages
+library(dplyr)
+##install.packages('factoextra')
+library(factoextra);
+library(tidyr);
+library(reshape2);
+library(readxl)
+##install.packages('FactoMineR')
+library(FactoMineR)
+##install.packages('PerformanceAnalytics')
+library(PerformanceAnalytics)
+require(quantmod)
+##install.packages('corrplot')
+library(corrplot)
+## in this part we will load the data using the following function 
+read_excel_allsheets <- function(filename, tibble = FALSE) {
+    sheets <- readxl::excel_sheets(filename)
+    x <- lapply(sheets, function(X) readxl::read_excel(filename, sheet = X))
+    if(!tibble) x <- lapply(x, as.data.frame)
+    names(x) <- sheets
+    x
+}
+## this should be changed according to where the data files are located in your machine
+filepath1<- "~/downloads/MonthlyMacro_20171018.xlsx"
+filepath2 <- "~/downloads/monthlydata.xlsx"
+## The warnings can be disregarded
+macroFact <- read_excel_allsheets(filepath1)
+companyData <- readxl::read_excel(filepath2, col_types = c("date","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric","numeric"),skip =3);
+companyData <- companyData[-c(1, 2), ]
+names(companyData)[1] <- 'Year'
+
+```
+
+
+
+```{r datafix, include=FALSE}
+companyData[1] <- lapply(companyData[1], function(x) format(x,'%Y-%m' ))
+companyData[1]<- lapply(companyData[1], function(x) as.Date(paste0(as.character(x), '-01'), format='%Y-%m-%d' ))
+companylogData<- tbl_df(Return.calculate(xts(companyData[, -1], order.by=as.POSIXct(companyData$Year)), method = "log"))
+companylogData['Year']<- sort(companyData$Year)
+companyData2 <- tbl_df(Return.calculate(xts(companyData[, -1], order.by=as.POSIXct(companyData$Year)), method = "discrete"))
+companyData2['Year']<- sort(companyData$Year)
+companylogData<- companylogData[complete.cases(companylogData), ]
+companyData2<- companyData2[complete.cases(companyData2), ]
+sources<- macroFact[2]
+sources <- sources[[1]]
+frenchfam <- sources[][-c(1, 2),]
+names(frenchfam) <- c('Year' ,frenchfam[1 , 2:5])
+frenchfam <- frenchfam[-1, ]
+frenchfam[1] <- lapply(frenchfam[1], function(x) as.Date(paste0(as.character(x), '01'), format='%Y%m%d'))
+frenchfam <- frenchfam[complete.cases(frenchfam), ]
+
+sources2<- macroFact[3]
+sources2<- sources2[[1]][-c(1, 2),]
+emp <- sources2[-c(1:9),]
+names(emp)<- emp[1,]
+emp <- emp[-1, ]
+emp <- melt(emp, id = 'Year')
+emp <- unite(emp, 'Year' ,c('Year','variable'), sep = "", remove = TRUE)
+names(emp)<- c('Year', 'emp_value')
+emp[1]<- lapply(emp[1], function(x) as.Date(paste0(as.character(x), '01'), format='%Y %B%d' ))
+emp <- emp[complete.cases(emp), ]
+
+
+sources3<- macroFact[4]
+sources3<- sources3[[1]][-c(1, 2),]
+cpi <- sources3[-c(1:8),]
+names(cpi)<- cpi[1,]
+cpi <- cpi[-1, ]
+cpi <- melt(cpi, id = 'Year')
+cpi <- unite(cpi, 'Year' ,c('Year','variable'), sep = "", remove = TRUE)
+names(cpi)<- c('Year', 'cpi_value')
+cpi[1]<- lapply(cpi[1], function(x) as.Date(paste0(as.character(x), '01'), format='%Y %B%d' ))
+cpi <- cpi[complete.cases(cpi), ]
+
+sources4<- macroFact[6]
+sources4<- sources4[[1]][-c(1, 2),]
+ppi <- sources4[-c(1:6),]
+names(ppi)<- ppi[1,]
+ppi <- ppi[-1, ]
+ppi <- melt(ppi, id = 'Year')
+ppi <- unite(ppi, 'Year' ,c('Year','variable'), sep = "", remove = TRUE)
+names(ppi)<- c('Year', 'ppi_value')
+ppi[1]<- lapply(ppi[1], function(x) as.Date(paste0(as.character(x), '01'), format='%Y %B%d' ))
+ppi <- ppi[complete.cases(ppi), ]
+
+
+sources5<- macroFact[7]
+sources5<- sources5[[1]][-c(1, 2),]
+import <- sources5[-c(1:7),]
+names(import)<- import[1,]
+import <- import[-1, ]
+import <- melt(import, id = 'Year')
+import <- unite(import, 'Year' ,c('Year','variable'), sep = "", remove = TRUE)
+names(import)<- c('Year', 'import_value')
+import[1]<- lapply(import[1], function(x) as.Date(paste0(as.character(x), '01'), format='%Y %B%d' ))
+import <- import[complete.cases(import), ]
+
+
+sources6<- macroFact[8]
+sources6<- sources6[[1]][-c(1, 2),]
+xport <- sources6[-c(1:7),]
+names(xport)<- xport[1,]
+xport <- xport[-1, ]
+xport <- melt(xport, id = 'Year')
+xport <- unite(xport, 'Year' ,c('Year','variable'), sep = "", remove = TRUE)
+names(xport)<- c('Year', 'xport_value')
+xport[1]<- lapply(xport[1], function(x) as.Date(paste0(as.character(x), '01'), format='%Y %B%d' ))
+xport <- xport[complete.cases(xport), ]
+
+sources7<- macroFact[5]
+sources7<- sources7[[1]][-c(1, 2),]
+manuf <- sources7[-c(1:8),]
+manuf <- manuf[-1,-c(1,2)]
+names(manuf)<- c('Year', 'manuf_value')
+manuf[1]<- lapply(manuf[1], function(x) as.Date(paste0(as.character(x), '01'), format='%Y %B%d' ))
+manuf <- manuf[complete.cases(manuf), ]
+
+
+all_data_simple<- Reduce(function(x, y) merge(x, y, all=FALSE, by= 'Year'), list(companyData2, emp, xport,import,ppi,cpi,manuf,frenchfam))
+all_data_log <- Reduce(function(x, y) merge(x, y, all=FALSE, by= 'Year'), list(companylogData, emp, xport,import,ppi,cpi,manuf,frenchfam))
+```
+
+## An overlook of the Data
+
+There are two datasets
+1. a simple return 
+2. log return
+
+```{r dataover, echo = FALSE, tidy= TRUE}
+all_data_simple[,-1]<- lapply(all_data_simple[,-1], function(x) as.numeric(x))
+all_data_log[,-1]<- lapply(all_data_log[,-1], function(x) as.numeric(x))
+
+head(all_data_simple)
+head(all_data_log)
+```
+
+
+## The analysis
+
+After conducting the analysis we have the following results
+
+```{r analys, echo = FALSE, tidy = TRUE}
+myPCAsimple <- PCA(all_data_simple[-1], scale.unit = TRUE, graph = FALSE)
+
+myPCAlog <- PCA(all_data_log[-1], scale.unit = TRUE, graph = FALSE)
+
+simpleigenvalue <- get_eigenvalue(myPCAsimple)
+
+logeigenvalue <- get_eigenvalue(myPCAlog)
+simpleigenvalue
+
+logeigenvalue
+```
+
+## Figures and plots
+
+```{r plotanalys, tidy= TRUE}
+fviz_eig(myPCAsimple, addlabels = TRUE, ylim = c(0, 50), title= 'Scree Plot of Principle Components'
+                        )
+```
+```{r plotanaly2, tidy= TRUE}
+
+
+
+
+fviz_pca_var(myPCAsimple, col.var = "cos2",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE # Avoid text overlapping
+             ,title= 'Biplot of PC1 and PC2'
+                        
+             )
+            
+
+             
+
+```
+
+
+
+```{r plotanaly3, tidy= TRUE, fig.width= 20, fig.height=12 }
+
+
+corrplot(myPCAsimple$var$cos2, is.corr=FALSE)
+
+```
+The correlation between each variable and PC 
+\newpage
+## Analysis
+
+
+From the Exploratory analysis above, we can view how each variable contribute to each PC
+In order for us to represent certain percentage of the dataset, we can view the percentage of each Principle component.
+to represent:
+ 50%  we need PC1-PC3
+ 75% we need PC1-PC6
+ 90% we need PC1-PC13
